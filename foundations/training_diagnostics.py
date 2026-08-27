@@ -14,12 +14,12 @@ class Solution:
             for module in model.children():
                 x = module(x)
                 if isinstance(module, nn.Linear):
-                    mean_val = round(x.mean().item(),4)
-                    std_val = round(x.std().item(), 4)
+                    mean_val = x.mean().item()
+                    std_val = (x.std().item()
                     if x.dim() >= 2:
-                        dead_frac = round(((x<=0).all(dim=0)).float().mean().item(), 4)
+                        dead_frac = ((x<=0).all(dim=0)).float().mean().item()
                     else:
-                        dead_frac = round((x<=0).float().mean().item(), 4)
+                        dead_frac = (x<=0).float().mean().item()
                     stats.append({'mean': mean_val, 'std': std_val, 'dead_fraction': dead_frac})
         return stats
 
@@ -35,9 +35,9 @@ class Solution:
         for module in model.children():
             if isinstance(module, nn.Linear):
                 grad = module.weight.grad
-                mean_val = round(grad.mean().item(), 4)
-                std_val = round(grad.std().item(), 4)
-                norm_val = round(torch.norm(grad).item(), 4)
+                mean_val = grad.mean().item()
+                std_val = grad.std().item()
+                norm_val = torch.norm(grad).item()
                 stats.append({'mean': mean_val, 'std': std_val, 'norm': norm_val})
         return stats
 
