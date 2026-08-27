@@ -1,49 +1,114 @@
 import torch
 import torch.nn as nn
-from torchtyping import TensorType
+
+from .attention import SingleHeadAttention
+
 
 class MultiHeadedSelfAttention(nn.Module):
+    """
+    Runs multiple causal attention heads in parallel,
+    concatenates them, then applies an output projection.
 
-    def __init__(self, embedding_dim: int, attention_dim: int, num_heads: int):
+    Input:
+        (B, T, model_dim)
+
+    Output:
+        (B, T, model_dim)
+    """
+
+    def __init__(
+        self,
+        model_dim: int,
+        num_heads: int
+    ):
         super().__init__()
-        # Create num_heads SingleHeadAttention instances using nn.ModuleList
-        self.att_heads = nn.ModuleList()
-        # Each head size = attention_dim // num_heads
-        # Use: self.SingleHeadAttention(embedding_dim, head_size)
-        for i in range(num_heads):
-            self.att_heads.append(self.SingleHeadAttention(embedding_dim, attention_dim//num_heads)) 
-        # After the heads, add an output projection: nn.Linear(attention_dim, attention_dim, bias=False)
-        self.output_proj = nn.Linear(attention_dim, attention_dim, bias=False)
 
-    def forward(self, embedded: TensorType[float]) -> TensorType[float]:
-        # Run each head on the input, concatenate outputs along dim=2
-        # Pass concatenated result through the output projection (W_O)
-        # Return result rounded to 4 decimal places
+        if model_dim % num_heads != 0:
+            raise ValueError(
+                "model_dim must be divisible by num_heads"
+            )
+
+        head_dim = model_dim // num_heads
+
+        self.att_heads = nn.ModuleList([
+            SingleHeadAttention(
+                model_dim=model_dim,
+                head_dim=head_dim
+            )
+            for _ in range(num_heads)
+        ])
+
+        self.output_proj = nn.Linear(
+            model_dim,
+            model_dim,
+            bias=False
+        )
+
+    def forward(
+        self,
+        x: torch.Tensor
+    ) -> torch.Tensor:
+
+        head_outputs = [
+            head(x)
+            for head in self.att_heads
+        ]
+
+        # Each head: (B, T, head_dim)
+        # Combined:  (B, T, model_dim)
+        concatenated = torch.cat(
+            head_outputs,
+            dim=-1
+        )
+
+        output = self.output_proj(
+            concatenated
+        )
+
+        return output
+    def forward_cached(
+        self,
+        x: torch.Tensor,
+        kv_caches=None,
+        max_length=None
+    ):
+
+        if kv_caches is None:
+            kv_caches = [
+                None
+                for _ in self.att_heads
+            ]
+
+        if len(kv_caches) != len(self.att_heads):
+            raise ValueError(
+                "Number of KV caches must match "
+                "number of attention heads."
+            )
+
         head_outputs = []
-        for head in self.att_heads:
-            head_outputs.append(head(embedded))
-        concatenated = torch.cat(head_outputs, dim = 2)
-        return self.output_proj(concatenated)
+        updated_caches = []
 
-    class SingleHeadAttention(nn.Module):
-        def __init__(self, embedding_dim: int, attention_dim: int):
-            super().__init__()
-            self.key_gen = nn.Linear(embedding_dim, attention_dim, bias=False)
-            self.query_gen = nn.Linear(embedding_dim, attention_dim, bias=False)
-            self.value_gen = nn.Linear(embedding_dim, attention_dim, bias=False)
+        for head, cache in zip(
+            self.att_heads,
+            kv_caches
+        ):
 
-        def forward(self, embedded: TensorType[float]) -> TensorType[float]:
-            k = self.key_gen(embedded)
-            q = self.query_gen(embedded)
-            v = self.value_gen(embedded)
+            output, cache = head.forward_cached(
+                x,
+                kv_cache=cache,
+                max_length=max_length
+            )
 
-            scores = q @ torch.transpose(k, 1, 2) # @ is the same as torch.matmul()
-            context_length, attention_dim = k.shape[1], k.shape[2]
-            scores = scores / (attention_dim ** 0.5)
+            head_outputs.append(output)
+            updated_caches.append(cache)
 
-            lower_triangular = torch.tril(torch.ones(context_length, context_length))
-            mask = lower_triangular == 0
-            scores = scores.masked_fill(mask, float('-inf'))
-            scores = nn.functional.softmax(scores, dim = 2)
+        concatenated = torch.cat(
+            head_outputs,
+            dim=-1
+        )
 
-            return scores @ v
+        output = self.output_proj(
+            concatenated
+        )
+
+        return output, updated_caches

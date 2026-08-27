@@ -1,104 +1,219 @@
 import torch
 import torch.nn as nn
-from torchtyping import TensorType
 
-# 1. Remember to include an additional LayerNorm after the block sequence and before the final linear layer
-# 2. Instantiate in the following order: Word embeddings, position embeddings, transformer blocks, final layer norm, and vocabulary projection.
+from .transformer import TransformerBlock
+
+
 class GPT(nn.Module):
+    """
+    Decoder-only Transformer language model.
 
-    def __init__(self, vocab_size: int, context_length: int, model_dim: int, num_blocks: int, num_heads: int):
+    token IDs
+        ↓
+    token embeddings
+        +
+    positional embeddings
+        ↓
+    Transformer blocks
+        ↓
+    final LayerNorm
+        ↓
+    vocabulary projection
+        ↓
+    next-token logits
+    """
+
+    def __init__(
+        self,
+        vocab_size: int,
+        context_length: int,
+        model_dim: int,
+        num_blocks: int,
+        num_heads: int,
+        dropout: float = 0.2
+    ):
         super().__init__()
-        torch.manual_seed(0)
-        self.word_embeddings = nn.Embedding(vocab_size, model_dim)
-        self.position_embeddings = nn.Embedding(context_length, model_dim)
-        self.transformer_blocks = nn.Sequential()
-        for i in range(num_blocks):
-            self.transformer_blocks.append(self.TransformerBlock(model_dim, num_heads))
-        self.final_norm = nn.LayerNorm(model_dim)
-        self.vocab_projection = nn.Linear(model_dim, vocab_size)
-        # Hint: nn.Sequential() will be useful for the block sequence
 
-    def forward(self, context: TensorType[int]) -> TensorType[float]:
-        torch.manual_seed(0)
-        # 1. Add token embeddings + position embeddings (use torch.arange for positions)
-        # 2. Pass through transformer blocks
-        # 3. Apply final LayerNorm, then project to vocab_size
-        # 4. Return logits rounded to 4 decimal places (no softmax)
-        embedded = self.word_embeddings(context)
-        positions = torch.arange(context.shape[1], device = context.device)
-        embedded = embedded + self.position_embeddings(positions)
-        output = self.final_norm(self.transformer_blocks(embedded))
-        logits = self.vocab_projection(output)
-        return torch.round(logits, decimals = 4)
+        self.vocab_size = vocab_size
+        self.context_length = context_length
+        self.model_dim = model_dim
 
-    # Do NOT modify the code below this line
-    class TransformerBlock(nn.Module):
+        # Token embedding table
+        self.token_embedding = nn.Embedding(
+            vocab_size,
+            model_dim
+        )
 
-        class MultiHeadedSelfAttention(nn.Module):
+        # Learned positional embeddings
+        self.position_embedding = nn.Embedding(
+            context_length,
+            model_dim
+        )
 
-            class SingleHeadAttention(nn.Module):
-                def __init__(self, model_dim: int, head_size: int):
-                    super().__init__()
-                    torch.manual_seed(0)
-                    self.key_gen = nn.Linear(model_dim, head_size, bias=False)
-                    self.query_gen = nn.Linear(model_dim, head_size, bias=False)
-                    self.value_gen = nn.Linear(model_dim, head_size, bias=False)
-                
-                def forward(self, embedded: TensorType[float]) -> TensorType[float]:
-                    k = self.key_gen(embedded)
-                    q = self.query_gen(embedded)
-                    v = self.value_gen(embedded)
+        # Stack of Transformer decoder blocks
+        self.transformer_blocks = nn.ModuleList([
+            TransformerBlock(
+                model_dim=model_dim,
+                num_heads=num_heads,
+                dropout=dropout
+            )
+            for _ in range(num_blocks)
+        ])
 
-                    scores = q @ torch.transpose(k, 1, 2) # @ is the same as torch.matmul()
-                    context_length, attention_dim = k.shape[1], k.shape[2]
-                    scores = scores / (attention_dim ** 0.5)
+        # Final normalization
+        self.final_norm = nn.LayerNorm(
+            model_dim
+        )
 
-                    lower_triangular = torch.tril(torch.ones(context_length, context_length))
-                    mask = lower_triangular == 0
-                    scores = scores.masked_fill(mask, float('-inf'))
-                    scores = nn.functional.softmax(scores, dim = 2)
+        # Convert hidden representation to vocab logits
+        self.lm_head = nn.Linear(
+            model_dim,
+            vocab_size
+        )
 
-                    return scores @ v
-                
-            def __init__(self, model_dim: int, num_heads: int):
-                super().__init__()
-                torch.manual_seed(0)
-                self.att_heads = nn.ModuleList()
-                for i in range(num_heads):
-                    self.att_heads.append(self.SingleHeadAttention(model_dim, model_dim // num_heads))
-                self.output_proj = nn.Linear(model_dim, model_dim, bias=False)
+    def forward(
+        self,
+        input_ids: torch.Tensor
+    ) -> torch.Tensor:
 
-            def forward(self, embedded: TensorType[float]) -> TensorType[float]:
-                head_outputs = []
-                for head in self.att_heads:
-                    head_outputs.append(head(embedded))
-                concatenated = torch.cat(head_outputs, dim = 2)
-                return self.output_proj(concatenated)
-        
-        class VanillaNeuralNetwork(nn.Module):
+        # input_ids: (B, T)
 
-            def __init__(self, model_dim: int):
-                super().__init__()
-                torch.manual_seed(0)
-                self.up_projection = nn.Linear(model_dim, model_dim * 4)
-                self.relu = nn.ReLU()
-                self.down_projection = nn.Linear(model_dim * 4, model_dim)
-                self.dropout = nn.Dropout(0.2) # using p = 0.2
-            
-            def forward(self, x: TensorType[float]) -> TensorType[float]:
-                torch.manual_seed(0)
-                return self.dropout(self.down_projection(self.relu(self.up_projection(x))))
+        batch_size, sequence_length = input_ids.shape
 
-        def __init__(self, model_dim: int, num_heads: int):
-            super().__init__()
-            torch.manual_seed(0)
-            self.attention = self.MultiHeadedSelfAttention(model_dim, num_heads)
-            self.linear_network = self.VanillaNeuralNetwork(model_dim)
-            self.first_norm = nn.LayerNorm(model_dim)
-            self.second_norm = nn.LayerNorm(model_dim)
+        if sequence_length > self.context_length:
+            raise ValueError(
+                f"Sequence length {sequence_length} exceeds "
+                f"context length {self.context_length}"
+            )
 
-        def forward(self, embedded: TensorType[float]) -> TensorType[float]:
-            torch.manual_seed(0)
-            embedded = embedded + self.attention(self.first_norm(embedded)) # skip connection
-            embedded = embedded + self.linear_network(self.second_norm(embedded)) # another skip connection
-            return embedded
+        positions = torch.arange(
+            sequence_length,
+            device=input_ids.device
+        )
+
+        # (B, T, D)
+        token_embeddings = self.token_embedding(
+            input_ids
+        )
+
+        # (T, D)
+        position_embeddings = self.position_embedding(
+            positions
+        )
+
+        # Broadcasting gives (B, T, D)
+        x = (
+            token_embeddings
+            + position_embeddings
+        )
+
+        for block in self.transformer_blocks:
+            x = block(x)
+
+        x = self.final_norm(x)
+
+        # (B, T, vocab_size)
+        logits = self.lm_head(x)
+
+        return logits
+    def forward_cached(
+        self,
+        input_ids: torch.Tensor,
+        cache=None
+    ):
+
+        batch_size, sequence_length = (
+            input_ids.shape
+        )
+
+        # ---------------------------------------------
+        # Find how many tokens already exist in cache
+        # ---------------------------------------------
+
+        if (
+            cache is None
+            or len(cache) == 0
+            or cache[0] is None
+            or len(cache[0]) == 0
+            or cache[0][0] is None
+        ):
+            past_length = 0
+
+        else:
+            past_length = cache[0][0].length
+
+        total_length = (
+            past_length
+            + sequence_length
+        )
+
+        if total_length > self.context_length:
+            raise ValueError(
+                f"Cached sequence length "
+                f"{total_length} exceeds context "
+                f"length {self.context_length}."
+            )
+
+        # ---------------------------------------------
+        # Correct absolute positions
+        # ---------------------------------------------
+
+        positions = torch.arange(
+            past_length,
+            total_length,
+            device=input_ids.device
+        )
+
+        token_embeddings = self.token_embedding(
+            input_ids
+        )
+
+        position_embeddings = (
+            self.position_embedding(
+                positions
+            )
+        )
+
+        x = (
+            token_embeddings
+            + position_embeddings
+        )
+
+        # ---------------------------------------------
+        # Initialize layer cache slots
+        # ---------------------------------------------
+
+        if cache is None:
+            cache = [
+                None
+                for _ in self.transformer_blocks
+            ]
+
+        updated_cache = []
+
+        # ---------------------------------------------
+        # Cached Transformer blocks
+        # ---------------------------------------------
+
+        for block, layer_cache in zip(
+            self.transformer_blocks,
+            cache
+        ):
+
+            x, new_layer_cache = (
+                block.forward_cached(
+                    x,
+                    kv_caches=layer_cache,
+                    max_length=self.context_length
+                )
+            )
+
+            updated_cache.append(
+                new_layer_cache
+            )
+
+        x = self.final_norm(x)
+
+        logits = self.lm_head(x)
+
+        return logits, updated_cache

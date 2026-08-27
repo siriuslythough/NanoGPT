@@ -1,77 +1,124 @@
 import torch
 import torch.nn as nn
-from torchtyping import TensorType
 
-# Uses Pre-LN architecture: LayerNorm is applied BEFORE each sub-layer, not after.
-# This differs from the original "Attention is All You Need" diagram but trains better.
-class TransformerBlock(nn.Module):
+from .multi_head_attention import MultiHeadedSelfAttention
 
-    def __init__(self, model_dim: int, num_heads: int):
+
+class FeedForward(nn.Module):
+    """
+    Position-wise feed-forward network.
+
+    model_dim
+        ↓
+    4 * model_dim
+        ↓
+    activation
+        ↓
+    model_dim
+    """
+
+    def __init__(
+        self,
+        model_dim: int,
+        dropout: float = 0.2
+    ):
         super().__init__()
-        # Instantiate in this order:
-        # 1. self.MultiHeadedSelfAttention(model_dim, num_heads)
-        self.attention = self.MultiHeadedSelfAttention(model_dim, num_heads)
-        # 2. self.VanillaNeuralNetwork(model_dim)
-        self.linear_network = self.VanillaNeuralNetwork(model_dim) 
-        # 3. Two nn.LayerNorm(model_dim) instances
-        self.first_norm = nn.LayerNorm(model_dim)
-        self.second_norm = nn.LayerNorm(model_dim)
 
-    def forward(self, embedded: TensorType[float]) -> TensorType[float]:
-        # Two residual connections with Pre-LN:
-        #   x = x + attention(layer_norm_1(x))
-        embedded = embedded + self.attention(self.first_norm(embedded)) # Skip Connection
-        #   x = x + feed_forward(layer_norm_2(x))
-        embedded = embedded + self.linear_network(self.second_norm(embedded)) # Another skip connection
-        return embedded
+        self.network = nn.Sequential(
+            nn.Linear(
+                model_dim,
+                4 * model_dim
+            ),
 
-    class MultiHeadedSelfAttention(nn.Module):
+            nn.ReLU(),
 
-        class SingleHeadAttention(nn.Module):
-            def __init__(self, model_dim: int, head_size: int):
-                super().__init__()
-                self.key_gen = nn.Linear(model_dim, head_size, bias=False)
-                self.query_gen = nn.Linear(model_dim, head_size, bias=False)
-                self.value_gen = nn.Linear(model_dim, head_size, bias=False)
+            nn.Linear(
+                4 * model_dim,
+                model_dim
+            ),
 
-            def forward(self, embedded: TensorType[float]) -> TensorType[float]:
-                k = self.key_gen(embedded)
-                q = self.query_gen(embedded)
-                v = self.value_gen(embedded)
+            nn.Dropout(dropout)
+        )
 
-                scores = q @ torch.transpose(k, 1, 2) # @ is the same as torch.matmul()
-                context_length, attention_dim = k.shape[1], k.shape[2]
-                scores = scores / (attention_dim ** 0.5)
+    def forward(
+        self,
+        x: torch.Tensor
+    ) -> torch.Tensor:
 
-                lower_triangular = torch.tril(torch.ones(context_length, context_length))
-                mask = lower_triangular == 0
-                scores = scores.masked_fill(mask, float('-inf'))
-                scores = nn.functional.softmax(scores, dim = 2)
+        return self.network(x)
 
-                return scores @ v
 
-        def __init__(self, model_dim: int, num_heads: int):
-            super().__init__()
-            self.att_heads = nn.ModuleList()
-            for i in range(num_heads):
-                self.att_heads.append(self.SingleHeadAttention(model_dim, model_dim // num_heads))
-            self.output_proj = nn.Linear(model_dim, model_dim, bias=False)
+class TransformerBlock(nn.Module):
+    """
+    Pre-LayerNorm decoder Transformer block.
+    """
 
-        def forward(self, embedded: TensorType[float]) -> TensorType[float]:
-            head_outputs = []
-            for head in self.att_heads:
-                head_outputs.append(head(embedded))
-            concatenated = torch.cat(head_outputs, dim = 2)
-            return self.output_proj(concatenated)
+    def __init__(
+        self,
+        model_dim: int,
+        num_heads: int,
+        dropout: float = 0.2
+    ):
+        super().__init__()
 
-    class VanillaNeuralNetwork(nn.Module):
+        self.attention = MultiHeadedSelfAttention(
+            model_dim=model_dim,
+            num_heads=num_heads
+        )
 
-        def __init__(self, model_dim: int):
-            super().__init__()
-            self.up_projection = nn.Linear(model_dim, model_dim * 4)
-            self.relu = nn.ReLU()
-            self.down_projection = nn.Linear(model_dim * 4, model_dim)
-            self.dropout = nn.Dropout(0.2) # using p = 0.2
+        self.feed_forward = FeedForward(
+            model_dim=model_dim,
+            dropout=dropout
+        )
 
-        def forward(self, x: TensorType[float]) -> TensorType[float]:
-            return self.dropout(self.down_projection(self.relu(self.up_projection(x))))
+        self.first_norm = nn.LayerNorm(
+            model_dim
+        )
+
+        self.second_norm = nn.LayerNorm(
+            model_dim
+        )
+
+    def forward(
+            self,
+            x: torch.Tensor
+        ) -> torch.Tensor:
+
+            # Pre-LN attention + residual
+            x = x + self.attention(
+                self.first_norm(x)
+            )
+
+            # Pre-LN FFN + residual
+            x = x + self.feed_forward(
+                self.second_norm(x)
+            )
+
+            return x
+    def forward_cached(
+        self,
+        x,
+        kv_caches=None,
+        max_length=None
+    ):
+
+        # Pre-LN
+        normalized = self.first_norm(x)
+
+        attention_output, updated_caches = (
+            self.attention.forward_cached(
+                normalized,
+                kv_caches=kv_caches,
+                max_length=max_length
+            )
+        )
+
+        # Attention residual
+        x = x + attention_output
+
+        # FFN residual
+        x = x + self.feed_forward(
+            self.second_norm(x)
+        )
+
+        return x, updated_caches
