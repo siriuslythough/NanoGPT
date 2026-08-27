@@ -46,10 +46,8 @@ class Solution:
 
         return {
             'loss': float(np.round(loss, 4)),
-            'dW1': np.round(dW1, 4).tolist(),
-            'db1': np.round(db1, 4).tolist(),
-            'dW2': np.round(dW2, 4).tolist(),
-            'db2': np.round(db2, 4).tolist()
+            'dW1': dW1.tolist(),
+            'db1': db1.tolist(),
+            'dW2': dW2.tolist(),
+            'db2': db2.tolist()
         }
-
-        pass
