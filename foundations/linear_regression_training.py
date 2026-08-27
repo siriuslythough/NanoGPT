@@ -28,5 +28,4 @@ class Solution:
             pred = self.get_model_prediction(X,initial_weights)
             for k in range(initial_weights.size):
                 initial_weights[k] -= self.learning_rate*self.get_derivative(pred, Y, len(X), X, k)
-        return np.round(initial_weights,5)
-        pass
+        return initial_weights
