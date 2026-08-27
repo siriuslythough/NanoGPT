@@ -9,5 +9,4 @@ class Solution:
             x = x - learning_rate*(2*x)
             i = i+1
         
-        return round(x,5)
-        pass
+        return x
