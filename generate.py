@@ -11,19 +11,15 @@ class Solution:
         # 5. Map token to character using int_to_char and accumulate result
         # Do not alter the fixed code below — it ensures reproducible test output.
 
-        generator = torch.manual_seed(0)
-        initial_state = generator.get_state()
-
         result = []
         for _ in range(new_chars):
             cropped_context = context[:, -context_length:] if context.shape[1]>context_length else context
-            logits = model(context)
+            logits = model(cropped_context)
             last_logits = logits[:, -1, :]
             probs = nn.functional.softmax(last_logits, dim = -1)
-            next_token = torch.multinomial(probs, 1, generator=generator)
+            next_token = torch.multinomial(probs, 1)
             # YOUR CODE (arbitrary number of lines)
             # The line where you call torch.multinomial(). Pass in the generator as well.
-            generator.set_state(initial_state)
             # MORE OF YOUR CODE (arbitrary number of lines)
             context = torch.cat((context, next_token), dim = -1)
             result.append(int_to_char[next_token.item()])
