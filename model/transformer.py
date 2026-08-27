@@ -74,5 +74,4 @@ class TransformerBlock(nn.Module):
             self.dropout = nn.Dropout(0.2) # using p = 0.2
 
         def forward(self, x: TensorType[float]) -> TensorType[float]:
-            torch.manual_seed(0)
             return self.dropout(self.down_projection(self.relu(self.up_projection(x))))
