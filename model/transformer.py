@@ -8,7 +8,6 @@ class TransformerBlock(nn.Module):
 
     def __init__(self, model_dim: int, num_heads: int):
         super().__init__()
-        torch.manual_seed(0)
         # Instantiate in this order:
         # 1. self.MultiHeadedSelfAttention(model_dim, num_heads)
         self.attention = self.MultiHeadedSelfAttention(model_dim, num_heads)
@@ -25,7 +24,7 @@ class TransformerBlock(nn.Module):
         embedded = embedded + self.attention(self.first_norm(embedded)) # Skip Connection
         #   x = x + feed_forward(layer_norm_2(x))
         embedded = embedded + self.linear_network(self.second_norm(embedded)) # Another skip connection
-        return torch.round(embedded, decimals=4)
+        return embedded
 
     class MultiHeadedSelfAttention(nn.Module):
 
@@ -55,7 +54,6 @@ class TransformerBlock(nn.Module):
 
         def __init__(self, model_dim: int, num_heads: int):
             super().__init__()
-            torch.manual_seed(0)
             self.att_heads = nn.ModuleList()
             for i in range(num_heads):
                 self.att_heads.append(self.SingleHeadAttention(model_dim, model_dim // num_heads))
@@ -72,7 +70,6 @@ class TransformerBlock(nn.Module):
 
         def __init__(self, model_dim: int):
             super().__init__()
-            torch.manual_seed(0)
             self.up_projection = nn.Linear(model_dim, model_dim * 4)
             self.relu = nn.ReLU()
             self.down_projection = nn.Linear(model_dim * 4, model_dim)
