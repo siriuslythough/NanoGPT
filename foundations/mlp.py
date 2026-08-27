@@ -18,5 +18,4 @@ class Solution:
                 a = np.maximum(z,0)
             else:
                 a = z
-        return np.round(a,5)
-        pass
+        return a
