@@ -18,4 +18,3 @@ class Solution:
         dl_dw = np.round((y_fwd-y_true)*y_fwd*(1-y_fwd)*x,5) 
         dl_db = np.round((y_fwd-y_true)*y_fwd*(1-y_fwd),5)
         return (dl_dw, dl_db)
-        pass
