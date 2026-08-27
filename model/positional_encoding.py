@@ -16,4 +16,4 @@ class Solution:
         div_term = 10000**(np.arange(0,d_model,2)/d_model)
         PE[:, 0::2] = np.sin(position/div_term)
         PE[:, 1::2] = np.cos(position/div_term[:PE[:, 1::2].shape[1]])
-        return np.round(PE,5)
+        return PE
