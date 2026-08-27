@@ -5,7 +5,6 @@ from torchtyping import TensorType
 class Solution(nn.Module):
     def __init__(self, vocabulary_size: int):
         super().__init__()
-        torch.manual_seed(0)
         # Layers: Embedding(vocabulary_size, 16) -> Linear(16, 1) -> Sigmoid
         self.embedding_layer = nn.Embedding(vocabulary_size, 16)
         self.linear_layer = nn.Linear(16,1)
