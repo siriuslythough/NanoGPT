@@ -6,7 +6,6 @@ class SingleHeadAttention(nn.Module):
 
     def __init__(self, embedding_dim: int, attention_dim: int):
         super().__init__()
-        torch.manual_seed(0)
         # Create three linear projections (Key, Query, Value) with bias=False
         # Instantiation order matters for reproducible weights: key, query, value
         self.key_gen = nn.Linear(embedding_dim, attention_dim, bias = False)
@@ -31,5 +30,5 @@ class SingleHeadAttention(nn.Module):
         # 4. Apply softmax(dim=2) to masked scores
         scores = nn.functional.softmax(scores, dim=2)
         # 5. Return (scores @ V) rounded to 4 decimal places
-        return torch.round(scores@v, decimals=4)
+        return scores@v
         
