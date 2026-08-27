@@ -18,5 +18,4 @@ class Solution:
             layer_output = max(0.0,layer_input)
         elif activation == "sigmoid":
             layer_output = 1/(1+np.exp(-layer_input))
-        return np.round(layer_output,5)
-        pass
+        return layer_output
