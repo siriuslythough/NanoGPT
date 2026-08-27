@@ -13,4 +13,4 @@ class Solution:
         # return np.round(your_answer, 5)
         x_hat = (x-np.mean(x))/np.sqrt(np.var(x)+1e-5)
         out = gamma*x_hat + beta
-        return np.round(out, 5)
+        return out
