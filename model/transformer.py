@@ -18,7 +18,6 @@ class TransformerBlock(nn.Module):
         self.second_norm = nn.LayerNorm(model_dim)
 
     def forward(self, embedded: TensorType[float]) -> TensorType[float]:
-        torch.manual_seed(0)
         # Two residual connections with Pre-LN:
         #   x = x + attention(layer_norm_1(x))
         embedded = embedded + self.attention(self.first_norm(embedded)) # Skip Connection
@@ -31,7 +30,6 @@ class TransformerBlock(nn.Module):
         class SingleHeadAttention(nn.Module):
             def __init__(self, model_dim: int, head_size: int):
                 super().__init__()
-                torch.manual_seed(0)
                 self.key_gen = nn.Linear(model_dim, head_size, bias=False)
                 self.query_gen = nn.Linear(model_dim, head_size, bias=False)
                 self.value_gen = nn.Linear(model_dim, head_size, bias=False)
