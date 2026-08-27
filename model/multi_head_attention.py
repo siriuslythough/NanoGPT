@@ -6,7 +6,6 @@ class MultiHeadedSelfAttention(nn.Module):
 
     def __init__(self, embedding_dim: int, attention_dim: int, num_heads: int):
         super().__init__()
-        torch.manual_seed(0)
         # Create num_heads SingleHeadAttention instances using nn.ModuleList
         self.att_heads = nn.ModuleList()
         # Each head size = attention_dim // num_heads
@@ -24,12 +23,11 @@ class MultiHeadedSelfAttention(nn.Module):
         for head in self.att_heads:
             head_outputs.append(head(embedded))
         concatenated = torch.cat(head_outputs, dim = 2)
-        return torch.round(self.output_proj(concatenated), decimals = 4)
+        return self.output_proj(concatenated)
 
     class SingleHeadAttention(nn.Module):
         def __init__(self, embedding_dim: int, attention_dim: int):
             super().__init__()
-            torch.manual_seed(0)
             self.key_gen = nn.Linear(embedding_dim, attention_dim, bias=False)
             self.query_gen = nn.Linear(embedding_dim, attention_dim, bias=False)
             self.value_gen = nn.Linear(embedding_dim, attention_dim, bias=False)
