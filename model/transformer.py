@@ -1,20 +1,22 @@
 import torch
 import torch.nn as nn
 
-from .multi_head_attention import MultiHeadedSelfAttention
+from .multi_head_attention import (
+    MultiHeadedSelfAttention
+)
 
 
 class FeedForward(nn.Module):
     """
     Position-wise feed-forward network.
 
-    model_dim
-        ↓
-    4 * model_dim
-        ↓
-    activation
-        ↓
-    model_dim
+        model_dim
+            ↓
+        4 * model_dim
+            ↓
+           ReLU
+            ↓
+        model_dim
     """
 
     def __init__(
@@ -24,7 +26,9 @@ class FeedForward(nn.Module):
     ):
         super().__init__()
 
+
         self.network = nn.Sequential(
+
             nn.Linear(
                 model_dim,
                 4 * model_dim
@@ -37,8 +41,11 @@ class FeedForward(nn.Module):
                 model_dim
             ),
 
-            nn.Dropout(dropout)
+            nn.Dropout(
+                dropout
+            )
         )
+
 
     def forward(
         self,
@@ -51,6 +58,22 @@ class FeedForward(nn.Module):
 class TransformerBlock(nn.Module):
     """
     Pre-LayerNorm decoder Transformer block.
+
+        x
+        │
+      LN1
+        │
+    Attention
+        │
+        + <──── residual
+        │
+      LN2
+        │
+       FFN
+        │
+        + <──── residual
+        │
+      output
     """
 
     def __init__(
@@ -61,64 +84,112 @@ class TransformerBlock(nn.Module):
     ):
         super().__init__()
 
-        self.attention = MultiHeadedSelfAttention(
-            model_dim=model_dim,
-            num_heads=num_heads
+
+        self.attention = (
+            MultiHeadedSelfAttention(
+                model_dim=model_dim,
+                num_heads=num_heads
+            )
         )
 
-        self.feed_forward = FeedForward(
-            model_dim=model_dim,
-            dropout=dropout
+
+        self.feed_forward = (
+            FeedForward(
+                model_dim=model_dim,
+                dropout=dropout
+            )
         )
+
 
         self.first_norm = nn.LayerNorm(
             model_dim
         )
 
+
         self.second_norm = nn.LayerNorm(
             model_dim
         )
 
-    def forward(
-            self,
-            x: torch.Tensor
-        ) -> torch.Tensor:
 
-            # Pre-LN attention + residual
-            x = x + self.attention(
+    # =====================================================
+    # Standard path
+    # =====================================================
+
+    def forward(
+        self,
+        x: torch.Tensor
+    ) -> torch.Tensor:
+
+
+        # Pre-LN attention + residual
+        x = (
+            x
+            +
+            self.attention(
                 self.first_norm(x)
             )
+        )
 
-            # Pre-LN FFN + residual
-            x = x + self.feed_forward(
+
+        # Pre-LN FFN + residual
+        x = (
+            x
+            +
+            self.feed_forward(
                 self.second_norm(x)
             )
+        )
 
-            return x
+
+        return x
+
+
+    # =====================================================
+    # Cached inference path
+    # =====================================================
+
     def forward_cached(
         self,
-        x,
+        x: torch.Tensor,
         kv_caches=None,
         max_length=None
     ):
 
-        # Pre-LN
-        normalized = self.first_norm(x)
 
-        attention_output, updated_caches = (
-            self.attention.forward_cached(
-                normalized,
-                kv_caches=kv_caches,
-                max_length=max_length
+        normalized = (
+            self.first_norm(x)
+        )
+
+
+        (
+            attention_output,
+            updated_caches
+        ) = self.attention.forward_cached(
+            normalized,
+            kv_caches=kv_caches,
+            max_length=max_length
+        )
+
+
+        # Attention residual
+        x = (
+            x
+            +
+            attention_output
+        )
+
+
+        # FFN residual
+        x = (
+            x
+            +
+            self.feed_forward(
+                self.second_norm(x)
             )
         )
 
-        # Attention residual
-        x = x + attention_output
 
-        # FFN residual
-        x = x + self.feed_forward(
-            self.second_norm(x)
+        return (
+            x,
+            updated_caches
         )
-
-        return x, updated_caches
