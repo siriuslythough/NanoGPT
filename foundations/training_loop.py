@@ -20,4 +20,4 @@ class Solution:
             err = X @ w + b - y
             w -= 2*lr*(1/X.shape[0])*(X.T@ err)
             b -= 2*lr*(1/X.shape[0])*np.sum(err)
-        return (np.round(w, 5), np.round(b, 5))
+        return (w,b)
