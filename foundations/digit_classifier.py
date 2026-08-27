@@ -22,4 +22,4 @@ class Solution(nn.Module):
         x = self.dropout(x)
         x = self.projection(x)
         x = self.sigmoid(x)
-        return torch.round(x, decimals = 4)
+        return x
