@@ -11,4 +11,4 @@ class Solution:
         rms = np.sqrt(np.mean(x**2)+eps)
         x_hat = x/rms
         out = gamma*x_hat
-        return np.round(out, 4)
+        return out
