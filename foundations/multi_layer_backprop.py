@@ -45,7 +45,7 @@ class Solution:
         db1 = dl_dz1
 
         return {
-            'loss': float(np.round(loss, 4)),
+            'loss': float(loss),
             'dW1': dW1.tolist(),
             'db1': db1.tolist(),
             'dW2': dW2.tolist(),
