@@ -11,4 +11,4 @@ class Solution:
         sum = 0
         m = np.max(z)
         z = np.exp(z-m)/np.sum(np.exp(z-m))
-        return np.round(z,4)
+        return z
