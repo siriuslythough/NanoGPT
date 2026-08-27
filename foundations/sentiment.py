@@ -19,4 +19,4 @@ class Solution(nn.Module):
         embeddings = self.embedding_layer(x)
         averaged = torch.mean(embeddings, dim = 1)
         projected = self.linear_layer(averaged)
-        return torch.round(self.sigmoid_layer(projected), decimals = 4)
+        return self.sigmoid_layer(projected)
