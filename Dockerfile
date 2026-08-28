@@ -1,112 +1,68 @@
-# ============================================================
-# Base image
-#
-# We use Python 3.11 inside the container.
-#
-# Your host machine uses Python 3.14, but containers do not
-# need to use the host's Python installation.
-# ============================================================
-
 FROM python:3.11-slim
 
 
-# ============================================================
-# Environment
-# ============================================================
-
-# Don't create .pyc files.
 ENV PYTHONDONTWRITEBYTECODE=1
-
-# Print Python logs directly instead of buffering them.
 ENV PYTHONUNBUFFERED=1
 
+# Project root is importable by Python.
+ENV PYTHONPATH=/app
 
-# ============================================================
-# Working directory
-#
-# Everything below happens relative to /app.
-# ============================================================
 
 WORKDIR /app
 
 
+COPY requirements.txt .
+
+# Upgrade pip first.
+RUN pip install --no-cache-dir --upgrade pip
+
+
 # ============================================================
-# Install Python dependencies
+# CUDA-enabled PyTorch
 #
-# Copy requirements separately first.
-#
-# Docker caches layers. If requirements.txt does not change,
-# dependency installation can be reused on future builds.
+# Host NVIDIA driver currently supports CUDA 12.5.
+# We deliberately use the official CUDA 12.4 PyTorch build.
 # ============================================================
 
-COPY requirements.txt .
+RUN pip install \
+    --no-cache-dir \
+    torch==2.6.0 \
+    --index-url https://download.pytorch.org/whl/cu124
+
+
+# ============================================================
+# Remaining application dependencies
+# ============================================================
 
 RUN pip install \
     --no-cache-dir \
     -r requirements.txt
 
 
-# ============================================================
-# Copy source code
-# ============================================================
-
 COPY api ./api
-COPY model ./model
 COPY data ./data
+COPY model ./model
 COPY tests ./tests
 
-
-# ============================================================
-# Copy model artifacts
-# ============================================================
-
-COPY tokenizer.json .
+COPY tokenizer.json ./tokenizer.json
 COPY checkpoints/best.pt ./checkpoints/best.pt
 
-
-# ============================================================
-# Copy anything required by imports/tests
-# ============================================================
-
-COPY *.py ./
+COPY generate.py .
+COPY benchmark_inference.py .
 
 
-# ============================================================
-# Document the port used by FastAPI
-#
-# EXPOSE does not itself publish the port.
-# It documents that this application listens on 8000.
-# ============================================================
+RUN python -m pytest -q
+
 
 EXPOSE 8000
 
 
-# ============================================================
-# Test during image build
-#
-# If our API tests fail, Docker refuses to build the image.
-# ============================================================
+HEALTHCHECK \
+    --interval=30s \
+    --timeout=5s \
+    --start-period=20s \
+    --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)" || exit 1
 
-RUN pytest -q
 
-
-# ============================================================
-# Container startup command
-#
-# IMPORTANT:
-#
-# 0.0.0.0 means listen on all network interfaces inside
-# the container.
-#
-# If we used 127.0.0.1 here, the API would only be reachable
-# from inside the container itself.
-# ============================================================
-
-CMD [
-    "uvicorn",
-    "api.main:app",
-    "--host",
-    "0.0.0.0",
-    "--port",
-    "8000"
-]
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
