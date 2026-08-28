@@ -1,0 +1,17 @@
+.git
+.gitignore
+
+__pycache__
+*.pyc
+*.pyo
+
+.pytest_cache
+.vscode
+.idea
+
+wandb
+prepared_data
+
+*.log
+
+README*
